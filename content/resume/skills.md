@@ -17,19 +17,19 @@ subtitle = ""
 [[feature]]
   icon = "chart-bar"
   icon_pack = "fas"
-  name = "Machine learning, statistical modeling, natural language processing, text mining, data analysis"
+  name = "Machine learning, statistical modeling, data visualization, data analysis"
   description = ""
   
 [[feature]]
   icon = "tools"
   icon_pack = "fas"
-  name = "R, SQL, GitHub, Markdown, shell scripting"
+  name = "R, Shiny, RMarkdown, SQL, GitHub"
   description = ""  
   
 [[feature]]
-  icon = "heart"
+  icon = "music"
   icon_pack = "fas"
-  name = "Writing and speaking for technical and general audiences"
+  name = "Music, Violin, Viola"
   description = ""
 
 +++
