@@ -9,7 +9,7 @@
 #   Latest themes (may require updating): https://sourcethemes.com/academic/themes/
 #   Browse built-in themes in `themes/academic/data/themes/`
 #   Browse user installed themes in `data/themes/`
-theme = "julia"
+theme = "luis"
 
 # Enable users to switch between day and night mode?
 day_night = false
@@ -102,10 +102,10 @@ contact_links = [
 ############################
 
 # Default image for social sharing and search engines. Place image in `static/img/` folder and specify image name here.
-sharing_image = "sharon-mccutcheon-62vi3TG5EDg-unsplash_small.jpg"
+#sharing_image = "sharon-mccutcheon-62vi3TG5EDg-unsplash_small.jpg"
 
 # Twitter username (without @). Used when a visitor shares your site on Twitter.
-twitter = "juliasilge"
+#twitter = "juliasilge"
 
 ############################
 ## Regional Settings
@@ -204,7 +204,7 @@ plugins_js  = []
 ## Marketing
 ############################
 [marketing]
-  google_analytics = "UA-68765210-1"
+  google_analytics = ""
   google_tag_manager = ""
 
 ############################

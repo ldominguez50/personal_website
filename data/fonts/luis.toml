@@ -1,0 +1,15 @@
+# Font style metadata
+name = "luis"
+
+# Optional Google font URL
+google_fonts = "Nanum+Gothic:400,700|PT+Sants:400,700|Roboto+Mono"
+
+# Font families
+heading_font = "Nanum Gothic"
+body_font = "PT Sans"
+nav_font = "PT Sans"
+mono_font = "Roboto Mono"
+
+# Font size
+font_size = "18"
+font_size_small = "16"
