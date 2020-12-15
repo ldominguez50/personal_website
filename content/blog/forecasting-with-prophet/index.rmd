@@ -1,0 +1,213 @@
+---
+# Documentation: https://sourcethemes.com/academic/docs/managing-content/
+
+title: "Forecasting With Prophet"
+subtitle: ""
+summary: ""
+authors: []
+tags: []
+categories: []
+date: 2020-12-14T00:22:27-06:00
+lastmod: 2020-12-14T00:22:27-06:00
+featured: false
+draft: false
+
+# Featured image
+# To use, add an image named `featured.jpg/png` to your page's folder.
+# Focal points: Smart, Center, TopLeft, Top, TopRight, Left, Right, BottomLeft, Bottom, BottomRight.
+image:
+  caption: ""
+  focal_point: ""
+  preview_only: true
+
+# Projects (optional).
+#   Associate this post with one or more of your projects.
+#   Simply enter your project's folder or file name without extension.
+#   E.g. `projects = ["internal-project"]` references `content/project/deep-learning/index.md`.
+#   Otherwise, set `projects = []`.
+projects: []
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE, 
+                      echo = TRUE, dpi = 300, cache.lazy = FALSE,
+                      tidy = "styler", fig.width = 8, fig.height = 5)
+```
+
+
+## Load Data
+
+Load necessary libraries and the dataset that we will use for forecasting.
+
+The dataset is comprise of the top 6 entries for singers on Wikipedia:
+
+1. [Michael Jackson](https://en.wikipedia.org/wiki/Michael_Jackson)
+2. [Lady Gaga](https://en.wikipedia.org/wiki/Lady_Gaga)
+3. [Eminem](https://en.wikipedia.org/wiki/Eminem)
+4. [Justin Bieber](https://en.wikipedia.org/wiki/Justin_Bieber)
+5. [Freddie Mercury](https://en.wikipedia.org/wiki/Freddie_Mercury)
+6. [Lil Wayne](https://en.wikipedia.org/wiki/Lil_Wayne)
+
+Get the data [here.](https://pageviews.toolforge.org/?project=en.wikipedia.org&platform=all-access&agent=user&redirects=0&start=2015-07-01&end=2019-12-31&pages=Michael_Jackson|Lady_Gaga|Eminem|Justin_Bieber|Freddie_Mercury|Lil_Wayne)
+
+```{r include=FALSE}
+
+library(tidyverse)
+library(rstan)
+library(prophet)
+library(lubridate)
+
+theme_set(theme_bw() + theme(legend.position = "none"))
+
+```
+
+
+```{r data, echo=FALSE}
+
+data <- read_csv("Top Singers Wikipedia Pageviews.csv")
+
+```
+
+## Data Preprocessing
+
+Inspect the data
+
+```{r}
+head(data)
+```
+
+We have to tidy and split the data into the different singers
+
+```{r}
+
+timeseries <- data %>% 
+  pivot_longer(`Michael Jackson`:`Lil Wayne`,
+               names_to = "singer",
+               values_to = "y") %>% 
+  mutate(ds = as_date(Date)) %>% 
+  select(ds,singer,y) %>% 
+  arrange(singer,ds)
+
+timeseries
+```
+
+Transforming our target variable to log of pageviews will help predictions and visualization.
+
+```{r log}
+
+timeseries$y <- log10(timeseries$y)
+
+```
+
+Transform the feature singer to a factor and modifying the levels, so I can override the default alphabetical ordering.
+
+```{r}
+timeseries <- timeseries %>% 
+  mutate(singer = factor(singer,levels = c("Michael Jackson" ,
+                                           "Lady Gaga","Eminem",
+                                           "Justin Bieber" ,  
+                                           "Freddie Mercury",
+                                           "Lil Wayne")))
+```
+
+Visualize time series
+
+```{r}
+timeseries %>% 
+  ggplot(aes(ds,y,color = singer) ) +
+  geom_line()+
+  facet_wrap(~ singer, scales = "free_y") +
+  scale_color_brewer(palette = "Set2") +
+  labs(title = "Top Singers Pageviews on Wikipedia",
+       y = "Log Pageviews", x = "")
+  
+```
+
+
+## Prophet Basic Forecasting
+
+To forecast individual singer, we are spliting their data 
+
+```{r}
+
+timeseries_split <- timeseries %>% 
+  split(.$singer)
+
+timeseries_split
+
+```
+
+We fit the model, create a future dataset, and forecast 30 days into the future.
+
+```{r}
+
+models <- timeseries_split %>% map(~ prophet(.))
+
+future_datasets <- models %>% map( ~ make_future_dataframe(.,periods = 365,freq = "day"))
+
+forecast <- map2(models,future_datasets,predict)
+
+```
+
+
+```{r}
+
+forecast_tidy <- forecast %>% 
+  do.call(rbind,.) %>% 
+  mutate(singer = word(rownames(.),1,sep = "\\.")) %>% 
+  left_join(timeseries, by = c("singer","ds")) %>% 
+  mutate(singer = factor(singer,levels = c("Michael Jackson" ,
+                                           "Lady Gaga","Eminem",
+                                           "Justin Bieber" ,  
+                                           "Freddie Mercury",
+                                           "Lil Wayne")))
+
+```
+
+
+```{r}
+
+forecast_tidy %>% 
+  ggplot(aes(x = ds, group = singer,color = singer )) +
+  geom_point(aes(y = y), size = 0.3,alpha = 0.5) +
+  geom_line(aes(y = yhat),alpha=0.8, color = "black",size = 0.2) +
+  geom_ribbon(aes(ymin = yhat_lower,
+                  ymax = yhat_upper),color = "grey92",alpha=0.2)+
+  facet_wrap(~ singer, scales = "free_y") +
+  labs(title = "Top Singers Pageviews on Wikipedia",
+       subtitle = "Actual obsevations in points. Forecast in lines",
+       y = "Log Pageviews", x = "")
+
+
+```
+
+## Performance
+
+```{r}
+
+forecast_tidy %>% 
+  mutate(diff = yhat - y) %>% 
+  group_by(singer) %>% 
+  summarise(mae = mean(abs(diff),na.rm = TRUE))
+
+```
+
+
+```{r}
+
+forecast_tidy %>% 
+  na.omit() %>% 
+  mutate(diff = abs(yhat - y)) %>% 
+  ggplot(aes(ds,diff)) +
+  geom_line(color = "red",alpha = 0.5) +
+  facet_wrap(~ singer) +
+  labs(title = "Absolute error by day",
+       y = "Abs Error of Log Pageviews")
+
+```
+
+The models are basic and they seem to miss the big spikes in pageviews. To improve the model, we should include big events on each of the singer's life (For example, new realeses of albums or music videos).
+
+
+

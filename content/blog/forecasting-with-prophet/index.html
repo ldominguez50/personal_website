@@ -1,0 +1,261 @@
+---
+# Documentation: https://sourcethemes.com/academic/docs/managing-content/
+
+title: "Forecasting With Prophet"
+subtitle: ""
+summary: ""
+authors: []
+tags: []
+categories: []
+date: 2020-12-14T00:22:27-06:00
+lastmod: 2020-12-14T00:22:27-06:00
+featured: false
+draft: false
+
+# Featured image
+# To use, add an image named `featured.jpg/png` to your page's folder.
+# Focal points: Smart, Center, TopLeft, Top, TopRight, Left, Right, BottomLeft, Bottom, BottomRight.
+image:
+  caption: ""
+  focal_point: ""
+  preview_only: true
+
+# Projects (optional).
+#   Associate this post with one or more of your projects.
+#   Simply enter your project's folder or file name without extension.
+#   E.g. `projects = ["internal-project"]` references `content/project/deep-learning/index.md`.
+#   Otherwise, set `projects = []`.
+projects: []
+---
+
+<script src="index_files/header-attrs/header-attrs.js"></script>
+<link href="index_files/anchor-sections/anchor-sections.css" rel="stylesheet" />
+<script src="index_files/anchor-sections/anchor-sections.js"></script>
+
+
+<div id="load-data" class="section level2">
+<h2>Load Data</h2>
+<p>Load necessary libraries and the dataset that we will use for forecasting.</p>
+<p>The dataset is comprise of the top 6 entries for singers on Wikipedia:</p>
+<ol style="list-style-type: decimal">
+<li><a href="https://en.wikipedia.org/wiki/Michael_Jackson">Michael Jackson</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Lady_Gaga">Lady Gaga</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Eminem">Eminem</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Justin_Bieber">Justin Bieber</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Freddie_Mercury">Freddie Mercury</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Lil_Wayne">Lil Wayne</a></li>
+</ol>
+<p>Get the data <a href="https://pageviews.toolforge.org/?project=en.wikipedia.org&amp;platform=all-access&amp;agent=user&amp;redirects=0&amp;start=2015-07-01&amp;end=2019-12-31&amp;pages=Michael_Jackson%7CLady_Gaga%7CEminem%7CJustin_Bieber%7CFreddie_Mercury%7CLil_Wayne">here.</a></p>
+</div>
+<div id="data-preprocessing" class="section level2">
+<h2>Data Preprocessing</h2>
+<p>Inspect the data</p>
+<pre class="r"><code>head(data)</code></pre>
+<pre><code>## # A tibble: 6 x 7
+##   Date       `Michael Jackso… `Lady Gaga` Eminem `Justin Bieber`
+##   &lt;date&gt;                &lt;dbl&gt;       &lt;dbl&gt;  &lt;dbl&gt;           &lt;dbl&gt;
+## 1 2015-07-01            19972        8465  23193           11212
+## 2 2015-07-02            19225        8209  37222           11419
+## 3 2015-07-03            18813        7855  26665           10973
+## 4 2015-07-04            19003        8037  21772           10816
+## 5 2015-07-05            19765        8879  21131           10737
+## 6 2015-07-06            20621        8187  21407           11675
+## # … with 2 more variables: `Freddie Mercury` &lt;dbl&gt;, `Lil Wayne` &lt;dbl&gt;</code></pre>
+<p>We have to tidy and split the data into the different singers</p>
+<pre class="r"><code>timeseries &lt;- data %&gt;% 
+  pivot_longer(`Michael Jackson`:`Lil Wayne`,
+               names_to = &quot;singer&quot;,
+               values_to = &quot;y&quot;) %&gt;% 
+  mutate(ds = as_date(Date)) %&gt;% 
+  select(ds,singer,y) %&gt;% 
+  arrange(singer,ds)
+
+timeseries</code></pre>
+<pre><code>## # A tibble: 9,870 x 3
+##    ds         singer     y
+##    &lt;date&gt;     &lt;chr&gt;  &lt;dbl&gt;
+##  1 2015-07-01 Eminem 23193
+##  2 2015-07-02 Eminem 37222
+##  3 2015-07-03 Eminem 26665
+##  4 2015-07-04 Eminem 21772
+##  5 2015-07-05 Eminem 21131
+##  6 2015-07-06 Eminem 21407
+##  7 2015-07-07 Eminem 20295
+##  8 2015-07-08 Eminem 19430
+##  9 2015-07-09 Eminem 19640
+## 10 2015-07-10 Eminem 20128
+## # … with 9,860 more rows</code></pre>
+<p>Transforming our target variable to log of pageviews will help predictions and visualization.</p>
+<pre class="r"><code>timeseries$y &lt;- log10(timeseries$y)</code></pre>
+<p>Transform the feature singer to a factor and modifying the levels, so I can override the default alphabetical ordering.</p>
+<pre class="r"><code>timeseries &lt;- timeseries %&gt;% 
+  mutate(singer = factor(singer,levels = c(&quot;Michael Jackson&quot; ,
+                                           &quot;Lady Gaga&quot;,&quot;Eminem&quot;,
+                                           &quot;Justin Bieber&quot; ,  
+                                           &quot;Freddie Mercury&quot;,
+                                           &quot;Lil Wayne&quot;)))</code></pre>
+<p>Visualize time series</p>
+<pre class="r"><code>timeseries %&gt;% 
+  ggplot(aes(ds,y,color = singer) ) +
+  geom_line()+
+  facet_wrap(~ singer, scales = &quot;free_y&quot;) +
+  scale_color_brewer(palette = &quot;Set2&quot;) +
+  labs(title = &quot;Top Singers Pageviews on Wikipedia&quot;,
+       y = &quot;Log Pageviews&quot;, x = &quot;&quot;)</code></pre>
+<p><img src="index_files/figure-html/unnamed-chunk-5-1.png" width="2400" /></p>
+</div>
+<div id="prophet-basic-forecasting" class="section level2">
+<h2>Prophet Basic Forecasting</h2>
+<p>To forecast individual singer, we are spliting their data</p>
+<pre class="r"><code>timeseries_split &lt;- timeseries %&gt;% 
+  split(.$singer)
+
+timeseries_split</code></pre>
+<pre><code>## $`Michael Jackson`
+## # A tibble: 1,645 x 3
+##    ds         singer              y
+##    &lt;date&gt;     &lt;fct&gt;           &lt;dbl&gt;
+##  1 2015-07-01 Michael Jackson  4.30
+##  2 2015-07-02 Michael Jackson  4.28
+##  3 2015-07-03 Michael Jackson  4.27
+##  4 2015-07-04 Michael Jackson  4.28
+##  5 2015-07-05 Michael Jackson  4.30
+##  6 2015-07-06 Michael Jackson  4.31
+##  7 2015-07-07 Michael Jackson  4.28
+##  8 2015-07-08 Michael Jackson  4.34
+##  9 2015-07-09 Michael Jackson  4.28
+## 10 2015-07-10 Michael Jackson  4.29
+## # … with 1,635 more rows
+## 
+## $`Lady Gaga`
+## # A tibble: 1,645 x 3
+##    ds         singer        y
+##    &lt;date&gt;     &lt;fct&gt;     &lt;dbl&gt;
+##  1 2015-07-01 Lady Gaga  3.93
+##  2 2015-07-02 Lady Gaga  3.91
+##  3 2015-07-03 Lady Gaga  3.90
+##  4 2015-07-04 Lady Gaga  3.91
+##  5 2015-07-05 Lady Gaga  3.95
+##  6 2015-07-06 Lady Gaga  3.91
+##  7 2015-07-07 Lady Gaga  3.92
+##  8 2015-07-08 Lady Gaga  3.94
+##  9 2015-07-09 Lady Gaga  3.95
+## 10 2015-07-10 Lady Gaga  3.96
+## # … with 1,635 more rows
+## 
+## $Eminem
+## # A tibble: 1,645 x 3
+##    ds         singer     y
+##    &lt;date&gt;     &lt;fct&gt;  &lt;dbl&gt;
+##  1 2015-07-01 Eminem  4.37
+##  2 2015-07-02 Eminem  4.57
+##  3 2015-07-03 Eminem  4.43
+##  4 2015-07-04 Eminem  4.34
+##  5 2015-07-05 Eminem  4.32
+##  6 2015-07-06 Eminem  4.33
+##  7 2015-07-07 Eminem  4.31
+##  8 2015-07-08 Eminem  4.29
+##  9 2015-07-09 Eminem  4.29
+## 10 2015-07-10 Eminem  4.30
+## # … with 1,635 more rows
+## 
+## $`Justin Bieber`
+## # A tibble: 1,645 x 3
+##    ds         singer            y
+##    &lt;date&gt;     &lt;fct&gt;         &lt;dbl&gt;
+##  1 2015-07-01 Justin Bieber  4.05
+##  2 2015-07-02 Justin Bieber  4.06
+##  3 2015-07-03 Justin Bieber  4.04
+##  4 2015-07-04 Justin Bieber  4.03
+##  5 2015-07-05 Justin Bieber  4.03
+##  6 2015-07-06 Justin Bieber  4.07
+##  7 2015-07-07 Justin Bieber  4.15
+##  8 2015-07-08 Justin Bieber  4.14
+##  9 2015-07-09 Justin Bieber  4.09
+## 10 2015-07-10 Justin Bieber  4.05
+## # … with 1,635 more rows
+## 
+## $`Freddie Mercury`
+## # A tibble: 1,645 x 3
+##    ds         singer              y
+##    &lt;date&gt;     &lt;fct&gt;           &lt;dbl&gt;
+##  1 2015-07-01 Freddie Mercury  4.69
+##  2 2015-07-02 Freddie Mercury  4.47
+##  3 2015-07-03 Freddie Mercury  4.37
+##  4 2015-07-04 Freddie Mercury  4.28
+##  5 2015-07-05 Freddie Mercury  4.23
+##  6 2015-07-06 Freddie Mercury  4.23
+##  7 2015-07-07 Freddie Mercury  4.17
+##  8 2015-07-08 Freddie Mercury  4.27
+##  9 2015-07-09 Freddie Mercury  4.19
+## 10 2015-07-10 Freddie Mercury  4.21
+## # … with 1,635 more rows
+## 
+## $`Lil Wayne`
+## # A tibble: 1,645 x 3
+##    ds         singer        y
+##    &lt;date&gt;     &lt;fct&gt;     &lt;dbl&gt;
+##  1 2015-07-01 Lil Wayne  4.15
+##  2 2015-07-02 Lil Wayne  4.13
+##  3 2015-07-03 Lil Wayne  4.12
+##  4 2015-07-04 Lil Wayne  4.51
+##  5 2015-07-05 Lil Wayne  4.49
+##  6 2015-07-06 Lil Wayne  4.48
+##  7 2015-07-07 Lil Wayne  4.40
+##  8 2015-07-08 Lil Wayne  4.40
+##  9 2015-07-09 Lil Wayne  4.36
+## 10 2015-07-10 Lil Wayne  4.37
+## # … with 1,635 more rows</code></pre>
+<p>We fit the model, create a future dataset, and forecast 30 days into the future.</p>
+<pre class="r"><code>models &lt;- timeseries_split %&gt;% map(~ prophet(.))
+
+future_datasets &lt;- models %&gt;% map( ~ make_future_dataframe(.,periods = 365,freq = &quot;day&quot;))
+
+forecast &lt;- map2(models,future_datasets,predict)</code></pre>
+<pre class="r"><code>forecast_tidy &lt;- forecast %&gt;% 
+  do.call(rbind,.) %&gt;% 
+  mutate(singer = word(rownames(.),1,sep = &quot;\\.&quot;)) %&gt;% 
+  left_join(timeseries, by = c(&quot;singer&quot;,&quot;ds&quot;)) %&gt;% 
+  mutate(singer = factor(singer,levels = c(&quot;Michael Jackson&quot; ,
+                                           &quot;Lady Gaga&quot;,&quot;Eminem&quot;,
+                                           &quot;Justin Bieber&quot; ,  
+                                           &quot;Freddie Mercury&quot;,
+                                           &quot;Lil Wayne&quot;)))</code></pre>
+<pre class="r"><code>forecast_tidy %&gt;% 
+  ggplot(aes(x = ds, group = singer,color = singer )) +
+  geom_point(aes(y = y), size = 0.3,alpha = 0.5) +
+  geom_line(aes(y = yhat),alpha=0.8, color = &quot;black&quot;,size = 0.2) +
+  geom_ribbon(aes(ymin = yhat_lower,
+                  ymax = yhat_upper),color = &quot;grey92&quot;,alpha=0.2)+
+  facet_wrap(~ singer, scales = &quot;free_y&quot;) +
+  labs(title = &quot;Top Singers Pageviews on Wikipedia&quot;,
+       subtitle = &quot;Actual obsevations in points. Forecast in lines&quot;,
+       y = &quot;Log Pageviews&quot;, x = &quot;&quot;)</code></pre>
+<p><img src="index_files/figure-html/unnamed-chunk-9-1.png" width="2400" /></p>
+</div>
+<div id="performance" class="section level2">
+<h2>Performance</h2>
+<pre class="r"><code>forecast_tidy %&gt;% 
+  mutate(diff = yhat - y) %&gt;% 
+  group_by(singer) %&gt;% 
+  summarise(mae = mean(abs(diff),na.rm = TRUE))</code></pre>
+<pre><code>## # A tibble: 6 x 2
+##   singer             mae
+##   &lt;fct&gt;            &lt;dbl&gt;
+## 1 Michael Jackson 0.0603
+## 2 Lady Gaga       0.113 
+## 3 Eminem          0.0711
+## 4 Justin Bieber   0.0741
+## 5 Freddie Mercury 0.117 
+## 6 Lil Wayne       0.0731</code></pre>
+<pre class="r"><code>forecast_tidy %&gt;% 
+  na.omit() %&gt;% 
+  mutate(diff = abs(yhat - y)) %&gt;% 
+  ggplot(aes(ds,diff)) +
+  geom_line(color = &quot;red&quot;,alpha = 0.5) +
+  facet_wrap(~ singer) +
+  labs(title = &quot;Absolute error by day&quot;,
+       y = &quot;Abs Error of Log Pageviews&quot;)</code></pre>
+<p><img src="index_files/figure-html/unnamed-chunk-11-1.png" width="2400" /></p>
+<p>The models are basic and they seem to miss the big spikes in pageviews. To improve the model, we should include big events on each of the singer’s life (For example, new realeses of albums or music videos).</p>
+</div>
