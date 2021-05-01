@@ -10,7 +10,7 @@ role: Data Analyst
 social:
 - icon: github
   icon_pack: fab
-  link: https://github.com/luisdominguez50
+  link: https://github.com/ldominguez50
 - icon: linkedin
   icon_pack: fab
   link: https://www.linkedin.com/in/luisdominguezromero/

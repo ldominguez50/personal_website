@@ -1,0 +1,220 @@
+---
+# Documentation: https://sourcethemes.com/academic/docs/managing-content/
+title: "A Basic XGBoost Tidymodels Workflow"
+subtitle: ""
+summary: "We will use the diamonds dataset to perform a simple tidymodels workflow to predict the price of the diamond by feeding several physical attributes to the algorithm."
+authors: ["Luis Dominguez"]
+tags: ["r","EDA","tidyverse"]
+categories: ["r","EDA","tidyverse"]
+date: 2021-04-30T00:22:27-06:00
+lastmod: 2021-04-30T00:22:27-06:00
+featured: true
+draft: false
+# Focal points: Smart, Center, TopLeft, Top, TopRight, Left, Right, BottomLeft, Bottom, BottomRight.
+image:
+  caption: "The Glorious Studio"
+  focal_point: "Smart"
+  preview_only: true
+projects: []
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE, 
+                      echo = TRUE, dpi = 300, cache.lazy = FALSE,
+                      tidy = "styler", fig.width = 6, fig.height = 6)
+```
+
+## Introduction
+
+The goal of this post is to set the ground of a [tidymodels](https://www.tidymodels.org/) workflow. We will define the model, the preprocessing recipe, tune the model paramenters, and evaluate our predictions.we will use the [diamonds dataset](https://ggplot2.tidyverse.org/reference/diamonds.html) that comes with [ggplot2](https://ggplot2.tidyverse.org/index.html). We will predict diamonds price based on their cut, colour, clarity & other attributes and it also covers the building a simple linear regression model using [tidymodels](https://www.tidymodels.org/).
+
+
+```{r include=FALSE}
+
+library(tidyverse)
+library(lubridate)
+
+theme_set(theme_bw() + theme(legend.position = "none"))
+
+```
+
+## The Data
+
+```{r}
+head(diamonds)
+```
+
+The goal of this post is not performing an eda of this dataset, so I will not spend too long exploring the data. I will include a quick glimpse for context.
+
+```{r}
+library(skimr)
+
+skim(diamonds)
+```
+
+Anyone who has seen any heist movies knows that carat and price are highly correlated. A carat is the unit of weight for precious stones and pearls, now equivalent to 200 milligrams. We will also check for correlation with other features.
+
+```{r}
+diamonds %>% 
+  select_if(is.numeric) %>% 
+  cor() %>% 
+  as_tibble(rownames = "variable1") %>% 
+  pivot_longer(cols = -variable1,
+               names_to = "variable2") %>% 
+  filter(variable1 != variable2) %>%
+  ggplot(aes(variable1,variable2, label = round(value,2),fill = value)) +
+  geom_raster() +
+  geom_text() +
+  scale_fill_gradient2()
+
+```
+
+The data is mostly clean, but I believe it will need some basic preprocessing.
+
+## Model
+
+### Dataset Splits and Folds
+
+```{r}
+library(tidymodels)
+
+set.seed(2345)
+split <- initial_split(data = diamonds, strata = price)
+train <- training(split)
+test <- testing(split)
+```
+
+```{r}
+set.seed(123)
+k_fold <- vfold_cv(data = train, v = 5, strata = price)
+
+```
+
+### Preprocessing
+
+```{r}
+library(themis)
+
+xgb_recipe <- recipe(price ~., data = train) %>% 
+  step_dummy(all_nominal())
+  
+
+```
+
+### Set Model Parameters
+
+[General boosted tree parameters](https://parsnip.tidymodels.org/reference/boost_tree.html)
+
+```{r}
+xgb_specs <- boost_tree(
+  trees = 1000, 
+  tree_depth = tune(), 
+  min_n = tune(), 
+  loss_reduction = tune(),                     
+  sample_size = tune(), 
+  mtry = tune(),         
+  learn_rate = tune()                          
+) %>% 
+  set_engine("xgboost") %>% 
+  set_mode("regression")
+```
+
+```{r}
+xgb_grid <- grid_max_entropy(
+  tree_depth(), 
+  min_n(), 
+  loss_reduction(),                     
+  sample_prop() ,
+  finalize(mtry(), train),         
+  learn_rate(),
+  size = 10
+  )
+```
+
+### Tuning Workflow
+[Yardstick metrics](https://yardstick.tidymodels.org/articles/metric-types.html)
+```{r}
+xgb_wf <- workflow() %>% 
+  add_model(xgb_specs) %>% 
+  add_recipe(xgb_recipe)
+
+```
+
+To save building time on Netlify, I ran the tuning locally and saved the results.
+
+```{r}
+# doParallel::registerDoParallel()
+# 
+# set.seed(896)
+# tuning <- tune_grid(
+#   xgb_wf,
+#   resamples = k_fold,
+#   grid = xgb_grid,
+#   metrics = metric_set(rmse,mae,mape),
+#   control = control_grid(verbose = TRUE)
+#   
+# )
+# 
+# save(tuning, file = "~/Documents/GitHub/personal_website/content/blog/simple-tidymodels-workflow/tuning.Rdata")
+
+load("~/Documents/GitHub/personal_website/content/blog/simple-tidymodels-workflow/tuning.Rdata")
+
+tuning
+
+```
+
+```{r}
+show_best(tuning, metric = "mape")
+
+best_params <- select_best(tuning, metric = "mape")
+```
+
+## Evaluation
+
+```{r}
+xgb_final_wf <- xgb_wf %>% 
+  finalize_workflow(best_params)
+```
+
+```{r}
+xgb_final_fit <- last_fit(xgb_final_wf, 
+                          split = split,
+                          metrics = metric_set(rmse,mae,mape))
+
+collect_metrics(xgb_final_fit)
+```
+
+It seems we didn't overfit our model.
+
+```{r}
+pred <- collect_predictions(xgb_final_fit)
+
+pred %>% 
+  ggplot(aes(price,.pred)) +
+  geom_point(size = 0.3, color = "midnightblue",alpha = 0.6) +
+  geom_abline(slope = 1) +
+  coord_fixed() +
+  labs(x = "Price",y = "Prediction")
+```
+
+Our model does worse with expensive diamonds. It would be worth it to remove outliers before training. Let's look at clarity and how the model perform in the different clarity categories.
+
+```{r}
+
+pred %>% 
+  bind_cols(test %>% select(-price)) %>%
+  mutate(perror = abs(.pred - price)/price) %>% 
+  ggplot(aes(clarity,perror, fill = clarity)) +
+  geom_boxplot(alpha = 0.3) +
+  scale_y_sqrt() + 
+  labs(x = "Clarity", y = "Percent Error")
+
+```
+
+Our model struggles with I1 clarity but besides this, I think this was a good attempt on applying the [tidymodels](https://www.tidymodels.org/) approach.
+
+
+[Photo credit](https://www.pexels.com/@the-glorious-studio-3584518?utm_content=attributionCopyText&utm_medium=referral&utm_source=pexels)

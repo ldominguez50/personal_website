@@ -6,8 +6,8 @@ summary: "We forecast Wikipedia pageviews for some of the most popular singers i
 authors: ["Luis Dominguez"]
 tags: ["r","forecast","prophet"]
 categories: ["r","forecast","prophet"]
-date: 2020-12-14T00:22:27-06:00
-lastmod: 2020-12-14T00:22:27-06:00
+date: 2020-03-14T00:22:27-06:00
+lastmod: 2020-03-14T00:22:27-06:00
 featured: false
 draft: false
 # Focal points: Smart, Center, TopLeft, Top, TopRight, Left, Right, BottomLeft, Bottom, BottomRight.
@@ -30,8 +30,6 @@ knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE,
 ## Introduction
 
 [Prophet](https://facebook.github.io/prophet/), or “Facebook Prophet,” is an open-source library for univariate (one variable) time series forecasting developed by Facebook. [Prophet](https://facebook.github.io/prophet/) implements what they refer to as an additive time series forecasting model, and the implementation supports trends, seasonality, and holidays.
-
-
 
 ## Load Data
 
@@ -60,7 +58,7 @@ theme_set(theme_bw() + theme(legend.position = "none"))
 
 ```{r data, echo=FALSE}
 
-data <- read_csv("Top Singers Wikipedia Pageviews.csv")
+data <- read_csv("~/Documents/GitHub/personal_website/content/blog/forecasting-with-prophet/Top Singers Wikipedia Pageviews.csv")
 
 ```
 
