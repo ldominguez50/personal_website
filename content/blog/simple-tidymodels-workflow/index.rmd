@@ -20,7 +20,6 @@ editor_options:
   chunk_output_type: console
 ---
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE, 
                       echo = TRUE, dpi = 300, cache.lazy = FALSE,
@@ -30,7 +29,6 @@ knitr::opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE,
 ## Introduction
 
 The goal of this post is to set the ground of a [tidymodels](https://www.tidymodels.org/) workflow. We will define the model, the preprocessing recipe, tune the model paramenters, and evaluate our predictions.we will use the [diamonds dataset](https://ggplot2.tidyverse.org/reference/diamonds.html) that comes with [ggplot2](https://ggplot2.tidyverse.org/index.html). We will predict diamonds price based on their cut, colour, clarity & other attributes and it also covers the building a simple linear regression model using [tidymodels](https://www.tidymodels.org/).
-
 
 ```{r include=FALSE}
 
@@ -55,7 +53,9 @@ library(skimr)
 skim(diamonds)
 ```
 
-Anyone who has seen any heist movies knows that carat and price are highly correlated. A carat is the unit of weight for precious stones and pearls, now equivalent to 200 milligrams. We will also check for correlation with other features.
+Anyone who has seen any heist movies knows that carat and price are highly correlated. A carat is the unit of weight for precious stones and pearls, now equivalent to 200 milligrams.
+
+We will also check for correlation with other features.
 
 ```{r}
 diamonds %>% 
@@ -95,6 +95,8 @@ k_fold <- vfold_cv(data = train, v = 5, strata = price)
 
 ### Preprocessing
 
+We don't need much transformation in the `diamonds` dataset but we do need to transform our nominal (factors) predictors into dummy variables.
+
 ```{r}
 library(themis)
 
@@ -106,7 +108,7 @@ xgb_recipe <- recipe(price ~., data = train) %>%
 
 ### Set Model Parameters
 
-[General boosted tree parameters](https://parsnip.tidymodels.org/reference/boost_tree.html)
+There are a fair amount of parameters in a boosted tree. You can look at the [general boosted tree parameters](https://parsnip.tidymodels.org/reference/boost_tree.html) to learn more about what they do.For now, we will focus on how to optimize the value of these parameters using the function `tune()`.
 
 ```{r}
 xgb_specs <- boost_tree(
@@ -122,6 +124,8 @@ xgb_specs <- boost_tree(
   set_mode("regression")
 ```
 
+Now that the parameters are set to `tune()`. We need to construct a grid with parameter values that they algorithm will try and evaluate what combination is the best. I like to use `grid_max_entropy()` because it supposed to give a good coverage. You can learn more about the different grid construction methods in the [dials](https://dials.tidymodels.org/) package documentation.
+
 ```{r}
 xgb_grid <- grid_max_entropy(
   tree_depth(), 
@@ -135,7 +139,9 @@ xgb_grid <- grid_max_entropy(
 ```
 
 ### Tuning Workflow
+
 [Yardstick metrics](https://yardstick.tidymodels.org/articles/metric-types.html)
+
 ```{r}
 xgb_wf <- workflow() %>% 
   add_model(xgb_specs) %>% 
@@ -143,7 +149,7 @@ xgb_wf <- workflow() %>%
 
 ```
 
-To save building time on Netlify, I ran the tuning locally and saved the results.
+The next step is using our grid and resamples to tune the parameters through cross validation. To save building time, I ran the tuning locally and saved the results.
 
 ```{r}
 # doParallel::registerDoParallel()
@@ -165,6 +171,8 @@ load("~/Documents/GitHub/personal_website/content/blog/simple-tidymodels-workflo
 tuning
 
 ```
+
+The `metric_set()` function sets the chosen metrics to use in the selection process. Something to notice is that in classification problems you may need to tell the function what event should be considered as the "success" in `metric_set(..., event_level = "second")`, for example.
 
 ```{r}
 show_best(tuning, metric = "mape")
@@ -215,6 +223,5 @@ pred %>%
 ```
 
 Our model struggles with I1 clarity but besides this, I think this was a good attempt on applying the [tidymodels](https://www.tidymodels.org/) approach.
-
 
 [Photo credit](https://www.pexels.com/@the-glorious-studio-3584518?utm_content=attributionCopyText&utm_medium=referral&utm_source=pexels)

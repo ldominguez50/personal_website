@@ -236,7 +236,8 @@ skim(diamonds)</code></pre>
 </tr>
 </tbody>
 </table>
-<p>Anyone who has seen any heist movies knows that carat and price are highly correlated. A carat is the unit of weight for precious stones and pearls, now equivalent to 200 milligrams. We will also check for correlation with other features.</p>
+<p>Anyone who has seen any heist movies knows that carat and price are highly correlated. A carat is the unit of weight for precious stones and pearls, now equivalent to 200 milligrams.</p>
+<p>We will also check for correlation with other features.</p>
 <pre class="r"><code>diamonds %&gt;%
   select_if(is.numeric) %&gt;%
   cor() %&gt;%
@@ -268,6 +269,7 @@ k_fold &lt;- vfold_cv(data = train, v = 5, strata = price)</code></pre>
 </div>
 <div id="preprocessing" class="section level3">
 <h3>Preprocessing</h3>
+<p>We don’t need much transformation in the <code>diamonds</code> dataset but we do need to transform our nominal (factors) predictors into dummy variables.</p>
 <pre class="r"><code>library(themis)
 
 xgb_recipe &lt;- recipe(price ~ ., data = train) %&gt;%
@@ -275,7 +277,7 @@ xgb_recipe &lt;- recipe(price ~ ., data = train) %&gt;%
 </div>
 <div id="set-model-parameters" class="section level3">
 <h3>Set Model Parameters</h3>
-<p><a href="https://parsnip.tidymodels.org/reference/boost_tree.html">General boosted tree parameters</a></p>
+<p>There are a fair amount of parameters in a boosted tree. You can look at the <a href="https://parsnip.tidymodels.org/reference/boost_tree.html">general boosted tree parameters</a> to learn more about what they do.For now, we will focus on how to optimize the value of these parameters using the function <code>tune()</code>.</p>
 <pre class="r"><code>xgb_specs &lt;- boost_tree(
   trees = 1000,
   tree_depth = tune(),
@@ -287,6 +289,7 @@ xgb_recipe &lt;- recipe(price ~ ., data = train) %&gt;%
 ) %&gt;%
   set_engine(&quot;xgboost&quot;) %&gt;%
   set_mode(&quot;regression&quot;)</code></pre>
+<p>Now that the parameters are set to <code>tune()</code>. We need to construct a grid with parameter values that they algorithm will try and evaluate what combination is the best. I like to use <code>grid_max_entropy()</code> because it supposed to give a good coverage. You can learn more about the different grid construction methods in the <a href="https://dials.tidymodels.org/">dials</a> package documentation.</p>
 <pre class="r"><code>xgb_grid &lt;- grid_max_entropy(
   tree_depth(),
   min_n(),
@@ -303,7 +306,7 @@ xgb_recipe &lt;- recipe(price ~ ., data = train) %&gt;%
 <pre class="r"><code>xgb_wf &lt;- workflow() %&gt;%
   add_model(xgb_specs) %&gt;%
   add_recipe(xgb_recipe)</code></pre>
-<p>To save building time on Netlify, I ran the tuning locally and saved the results.</p>
+<p>The next step is using our grid and resamples to tune the parameters through cross validation. To save building time, I ran the tuning locally and saved the results.</p>
 <pre class="r"><code># doParallel::registerDoParallel()
 #
 # set.seed(896)
@@ -331,6 +334,7 @@ tuning</code></pre>
 ## 3 &lt;split [32.4K/8.1K]&gt; Fold3 &lt;tibble [30 × 10]&gt; &lt;tibble [0 × 1]&gt;
 ## 4 &lt;split [32.4K/8.1K]&gt; Fold4 &lt;tibble [30 × 10]&gt; &lt;tibble [0 × 1]&gt;
 ## 5 &lt;split [32.4K/8.1K]&gt; Fold5 &lt;tibble [30 × 10]&gt; &lt;tibble [0 × 1]&gt;</code></pre>
+<p>The <code>metric_set()</code> function sets the chosen metrics to use in the selection process. Something to notice is that in classification problems you may need to tell the function what event should be considered as the “success” in <code>metric_set(..., event_level = "second")</code>, for example.</p>
 <pre class="r"><code>show_best(tuning, metric = &quot;mape&quot;)</code></pre>
 <pre><code>## # A tibble: 5 x 12
 ##    mtry min_n tree_depth learn_rate loss_reduction sample_size .metric
