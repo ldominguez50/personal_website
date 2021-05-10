@@ -105,7 +105,7 @@ contact_links = [
 #sharing_image = "sharon-mccutcheon-62vi3TG5EDg-unsplash_small.jpg"
 
 # Twitter username (without @). Used when a visitor shares your site on Twitter.
-#twitter = "juliasilge"
+#twitter = ""
 
 ############################
 ## Regional Settings
@@ -169,7 +169,7 @@ plugins_js  = []
   engine = 1
 
   # Which page types are commentable?
-  commentable = {page = false, blog = true}
+  commentable = {page = false, blog = false}
 
   # Configuration of Disqus.
   [comments.disqus]
